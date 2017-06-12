@@ -100,6 +100,11 @@ if __name__ == "__main__":
                         envvar="OS_AUTH_URL",
                         help='OpenStack auth url endpoint. If not supplied, the value of the '
                         '"OS_AUTH_URL" environment variable is used.')
+    parser.add_argument('--os-region-name',
+                        action=EnvDefault,
+                        envvar="OS_REGION_NAME",
+                        help='OpenStack region name. If not supplied, the value of the '
+                        '"OS_REGION_NAME" environment variable is used.')
     parser.add_argument('--os-user-domain-name',
                         action=EnvDefault,
                         envvar="OS_USER_DOMAIN_NAME",
@@ -131,7 +136,7 @@ if __name__ == "__main__":
     ioctx = cluster_connect(cfg.pool, cfg.conf, cfg.user)
     rbd_inst = rbd.RBD()
     sess = make_session(cfg)
-    cclient = cinder_client.Client('2', session=sess)
+    cclient = cinder_client.Client('2', session=sess,region_name=opts.os_region_name)
 
     volumenames = [vol for vol in rbd_inst.list(ioctx) if volume_re.match(vol)]
     log.info("Got information about %d volumes", len(volumenames))
