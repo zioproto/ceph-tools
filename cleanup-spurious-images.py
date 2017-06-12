@@ -139,8 +139,6 @@ if __name__ == "__main__":
     sess = make_session(cfg)
     cclient = cinder_client.Client('2', session=sess,region_name=cfg.os_region_name)
 
-    volumenames = [vol for vol in rbd_inst.list(ioctx) if volume_re.match(vol)]
-
     vols_snaps = {}
 
     for vol in rbd_inst.list(ioctx):
