@@ -42,6 +42,7 @@ import cinderclient.exceptions as cex
 log = logging.getLogger()
 log.addHandler(logging.StreamHandler())
 volume_re = re.compile('^volume-(?P<uuid>\w{8}-\w{4}-\w{4}-\w{4}-\w{12})')
+snapshot_re = re.compile('^snapshot-(?P<uuid>\w{8}-\w{4}-\w{4}-\w{4}-\w{12})')
 
 class EnvDefault(argparse.Action):
     # This is took from
@@ -136,21 +137,38 @@ if __name__ == "__main__":
     ioctx = cluster_connect(cfg.pool, cfg.conf, cfg.user)
     rbd_inst = rbd.RBD()
     sess = make_session(cfg)
-    cclient = cinder_client.Client('2', session=sess,region_name=opts.os_region_name)
+    cclient = cinder_client.Client('2', session=sess,region_name=cfg.os_region_name)
 
     volumenames = [vol for vol in rbd_inst.list(ioctx) if volume_re.match(vol)]
-    log.info("Got information about %d volumes", len(volumenames))
-    # Inizializza una lista
+
+    vols_snaps = {}
+
+    for vol in rbd_inst.list(ioctx):
+        if volume_re.match(vol):
+            image = rbd.Image(ioctx,vol)
+            vols_snaps[vol]=rbd.Image.list_snaps(image)
+
     to_delete= []
-    for name in volumenames:
-        uuid = volume_re.search(name).group('uuid')
+    for vol in vols_snaps:
+        uuid = volume_re.search(vol).group('uuid')
         log.debug("Checking if cinder volume %s exists", uuid)
         try:
             cclient.volumes.get(uuid)
             log.debug("Volume %s exists.", uuid)
         except cex.NotFound:
             log.debug("This %s rbd image should be deleted", uuid)
-            to_delete.append("rbd -p %s rm %s" % (cfg.pool, name))
+            to_delete.append("rbd -p %s rm %s" % (cfg.pool, vol))
+        for snapshot in vols_snaps[vol]:
+            if snapshot['name'].startswith('snapshot-'):
+                uuid = snapshot_re.search(snapshot['name']).group('uuid')
+                try:
+                    cclient.volume_snapshots.get(uuid)
+                except:
+                    print vol,snapshot['name']
+                    # TODO: implement command to delete snapshots
+                    #to_delete.append("rbd -p %s unprotect ... " % (cfg.pool, xxxx))
+                    print "Not found"
+
 
     print "This is the list of commnads you should issue"
     print str.join('\n', to_delete) 
