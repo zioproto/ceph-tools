@@ -170,5 +170,5 @@ if __name__ == "__main__":
                     print "Not found"
 
 
-    print "This is the list of commnads you should issue"
+    print "This is the list of commands you should issue"
     print str.join('\n', to_delete) 
