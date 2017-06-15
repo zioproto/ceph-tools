@@ -162,10 +162,8 @@ if __name__ == "__main__":
                 try:
                     cclient.volume_snapshots.get(uuid)
                 except:
-                    print vol,snapshot['name']
-                    # TODO: implement command to delete snapshots
-                    #to_delete.append("rbd -p %s unprotect ... " % (cfg.pool, xxxx))
-                    print "Not found"
+                    to_delete.append("rbd -p %s snap unprotect %s@%s" % (cfg.pool, vol, snapshot['name']))
+                    to_delete.append("rbd -p %s snap remove %s@%s " % (cfg.pool, vol, snapshot['name']))
 
 
     print "This is the list of commands you should issue"
