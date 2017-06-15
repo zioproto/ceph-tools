@@ -39,10 +39,14 @@ from keystoneclient.v3 import client as keystone_client
 from cinderclient import client as cinder_client
 import cinderclient.exceptions as cex
 
+from novaclient import client as nova_client
+import novaclient.exceptions as nex
+
 log = logging.getLogger()
 log.addHandler(logging.StreamHandler())
 volume_re = re.compile('^volume-(?P<uuid>\w{8}-\w{4}-\w{4}-\w{4}-\w{12})')
 snapshot_re = re.compile('^snapshot-(?P<uuid>\w{8}-\w{4}-\w{4}-\w{4}-\w{12})')
+ephemeral_disk_re = re.compile('^(?P<uuid>\w{8}-\w{4}-\w{4}-\w{4}-\w{12})_disk')
 
 class EnvDefault(argparse.Action):
     # This is took from
@@ -138,15 +142,31 @@ if __name__ == "__main__":
     rbd_inst = rbd.RBD()
     sess = make_session(cfg)
     cclient = cinder_client.Client('2', session=sess,region_name=cfg.os_region_name)
+    nclient = nova_client.Client('2',session=sess,region_name=cfg.os_region_name)
 
     vols_snaps = {}
+    ephemeral_disks = []
+    to_delete= []
 
     for vol in rbd_inst.list(ioctx):
         if volume_re.match(vol):
             image = rbd.Image(ioctx,vol,read_only=True)
             vols_snaps[vol]=rbd.Image.list_snaps(image)
+        elif ephemeral_disk_re.match(vol):
+            ephemeral_disks.append(vol)
+        else:
+            log.debug("rbd volume %s has a name not expected with Openstack" % vol)
 
-    to_delete= []
+    for disk in ephemeral_disks:
+        uuid = disk.split('_')[0]
+        log.debug("Checking if nova volume %s exists", uuid)
+        try:
+            nclient.servers.get(uuid)
+            log.debug("Instance %s exists.", uuid)
+        except nex.NotFound:
+            log.debug("This %s rbd image should be deleted", uuid)
+            to_delete.append("rbd -p %s rm %s" % (cfg.pool, disk))
+
     for vol in vols_snaps:
         uuid = volume_re.search(vol).group('uuid')
         log.debug("Checking if cinder volume %s exists", uuid)
