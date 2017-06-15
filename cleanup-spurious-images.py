@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     for vol in rbd_inst.list(ioctx):
         if volume_re.match(vol):
-            image = rbd.Image(ioctx,vol)
+            image = rbd.Image(ioctx,vol,read_only=True)
             vols_snaps[vol]=rbd.Image.list_snaps(image)
 
     to_delete= []
