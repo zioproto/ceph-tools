@@ -197,7 +197,6 @@ if __name__ == "__main__":
                         to_delete.append("rbd -p %s snap remove %s@%s " % (cfg.pool, vol, snapshot['name']))
 
     if 'glance' in cfg.test:
-        print len(rbd_inst.list(ioctx))
         for image in rbd_inst.list(ioctx):
             try:
                 gclient.images.get(image)
@@ -207,6 +206,5 @@ if __name__ == "__main__":
                 debuginfo.append("openstack image show %s" % image)
 
     print "This is the list of commands you should issue"
-    print len(to_delete)
     print str.join('\n', to_delete) 
     print str.join('\n', debuginfo)
