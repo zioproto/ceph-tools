@@ -42,6 +42,9 @@ import cinderclient.exceptions as cex
 from novaclient import client as nova_client
 import novaclient.exceptions as nex
 
+from glanceclient.v2 import client as glance_client
+import glanceclient.exc as gex
+
 log = logging.getLogger()
 log.addHandler(logging.StreamHandler())
 volume_re = re.compile('^volume-(?P<uuid>\w{8}-\w{4}-\w{4}-\w{4}-\w{12})')
@@ -85,6 +88,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-t','--test',
+                        help='Possible values: glance nova cinder ', required=True)
     parser.add_argument('--os-username',
                         action=EnvDefault,
                         envvar="OS_USERNAME",
@@ -143,48 +148,65 @@ if __name__ == "__main__":
     sess = make_session(cfg)
     cclient = cinder_client.Client('2', session=sess,region_name=cfg.os_region_name)
     nclient = nova_client.Client('2',session=sess,region_name=cfg.os_region_name)
+    gclient = glance_client.Client('2',session=sess,region_name=cfg.os_region_name)
 
     vols_snaps = {}
     ephemeral_disks = []
     to_delete= []
+    debuginfo = []
 
-    for vol in rbd_inst.list(ioctx):
-        if volume_re.match(vol):
-            image = rbd.Image(ioctx,vol,read_only=True)
-            vols_snaps[vol]=rbd.Image.list_snaps(image)
-        elif ephemeral_disk_re.match(vol):
-            ephemeral_disks.append(vol)
-        else:
-            log.debug("rbd volume %s has a name not expected with Openstack" % vol)
+    if 'nova' in cfg.test or 'cinder' in cfg.test:
+        for vol in rbd_inst.list(ioctx):
+            if volume_re.match(vol):
+                image = rbd.Image(ioctx,vol,read_only=True)
+                vols_snaps[vol]=rbd.Image.list_snaps(image)
+            elif ephemeral_disk_re.match(vol):
+                ephemeral_disks.append(vol)
+            else:
+                log.debug("rbd volume %s has a name not expected with Openstack" % vol)
 
-    for disk in ephemeral_disks:
-        uuid = disk.split('_')[0]
-        log.debug("Checking if nova volume %s exists", uuid)
-        try:
-            nclient.servers.get(uuid)
-            log.debug("Instance %s exists.", uuid)
-        except nex.NotFound:
-            log.debug("This %s rbd image should be deleted", uuid)
-            to_delete.append("rbd -p %s rm %s" % (cfg.pool, disk))
+    if 'nova' in cfg.test:
+        for disk in ephemeral_disks:
+            uuid = disk.split('_')[0]
+            log.debug("Checking if nova volume %s exists", uuid)
+            try:
+                nclient.servers.get(uuid)
+                log.debug("Instance %s exists.", uuid)
+            except nex.NotFound:
+                log.debug("This %s rbd image should be deleted", uuid)
+                to_delete.append("rbd -p %s rm %s" % (cfg.pool, disk))
+                debuginfo.append("openstack server show %s" % uuid)
 
-    for vol in vols_snaps:
-        uuid = volume_re.search(vol).group('uuid')
-        log.debug("Checking if cinder volume %s exists", uuid)
-        try:
-            cclient.volumes.get(uuid)
-            log.debug("Volume %s exists.", uuid)
-        except cex.NotFound:
-            log.debug("This %s rbd image should be deleted", uuid)
-            to_delete.append("rbd -p %s rm %s" % (cfg.pool, vol))
-        for snapshot in vols_snaps[vol]:
-            if snapshot['name'].startswith('snapshot-'):
-                uuid = snapshot_re.search(snapshot['name']).group('uuid')
-                try:
-                    cclient.volume_snapshots.get(uuid)
-                except:
-                    to_delete.append("rbd -p %s snap unprotect %s@%s" % (cfg.pool, vol, snapshot['name']))
-                    to_delete.append("rbd -p %s snap remove %s@%s " % (cfg.pool, vol, snapshot['name']))
+    if 'cinder' in cfg.test:
+        for vol in vols_snaps:
+            uuid = volume_re.search(vol).group('uuid')
+            log.debug("Checking if cinder volume %s exists", uuid)
+            try:
+                cclient.volumes.get(uuid)
+                log.debug("Volume %s exists.", uuid)
+            except cex.NotFound:
+                log.debug("This %s rbd image should be deleted", uuid)
+                to_delete.append("rbd -p %s rm %s" % (cfg.pool, vol))
+            for snapshot in vols_snaps[vol]:
+                if snapshot['name'].startswith('snapshot-'):
+                    uuid = snapshot_re.search(snapshot['name']).group('uuid')
+                    try:
+                        cclient.volume_snapshots.get(uuid)
+                    except:
+                        to_delete.append("rbd -p %s snap unprotect %s@%s" % (cfg.pool, vol, snapshot['name']))
+                        to_delete.append("rbd -p %s snap remove %s@%s " % (cfg.pool, vol, snapshot['name']))
 
+    if 'glance' in cfg.test:
+        print len(rbd_inst.list(ioctx))
+        for image in rbd_inst.list(ioctx):
+            try:
+                gclient.images.get(image)
+            except gex.NotFound:
+                log.debug("This %s rbd image should be deleted", image)
+                to_delete.append("rbd -p %s rm %s" % (cfg.pool, image))
+                debuginfo.append("openstack image show %s" % image)
 
     print "This is the list of commands you should issue"
+    print len(to_delete)
     print str.join('\n', to_delete) 
+    print str.join('\n', debuginfo)
