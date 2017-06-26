@@ -203,7 +203,7 @@ if __name__ == "__main__":
                 imagerbd = rbd.Image(ioctx,image,read_only=True)
                 imagerbd.set_snap('snap')
                 if len(imagerbd.list_children()) == 0:
-                    print "This %s %s rbd image has 0 children and could be deleted" % (image,imageglance.name)
+                    print "uuid %s owner %s name %s rbd image has 0 children and could be deleted" % (image,imageglance.owner,imageglance.name)
             except gex.NotFound:
                 log.debug("This %s rbd image should be deleted", image)
                 to_delete.append("rbd -p %s children %s@snap" % (cfg.pool, image))
@@ -211,6 +211,8 @@ if __name__ == "__main__":
                 to_delete.append("rbd -p %s snap purge %s" % (cfg.pool, image))
                 to_delete.append("rbd -p %s rm %s" % (cfg.pool, image))
                 debuginfo.append("openstack image show %s" % image)
+            except rbd.ImageNotFound:
+                print "uuid %s owner %s name %s DATALOSS @snap snapshot missing" % (image,imageglance.owner,imageglance.name)
 
     print "This is the list of commands you should issue"
     print str.join('\n', to_delete) 
