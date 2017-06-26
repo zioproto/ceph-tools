@@ -199,7 +199,11 @@ if __name__ == "__main__":
     if 'glance' in cfg.test:
         for image in rbd_inst.list(ioctx):
             try:
-                gclient.images.get(image)
+                imageglance = gclient.images.get(image)
+                imagerbd = rbd.Image(ioctx,image,read_only=True)
+                imagerbd.set_snap('snap')
+                if len(imagerbd.list_children()) == 0:
+                    print "This %s %s rbd image has 0 children and could be deleted" % (image,imageglance.name)
             except gex.NotFound:
                 log.debug("This %s rbd image should be deleted", image)
                 to_delete.append("rbd -p %s children %s@snap" % (cfg.pool, image))
