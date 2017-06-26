@@ -202,6 +202,7 @@ if __name__ == "__main__":
                 gclient.images.get(image)
             except gex.NotFound:
                 log.debug("This %s rbd image should be deleted", image)
+                to_delete.append("rbd -p %s children %s@snap" % (cfg.pool, image))
                 to_delete.append("rbd -p %s snap unprotect %s@snap" % (cfg.pool, image))
                 to_delete.append("rbd -p %s snap purge %s" % (cfg.pool, image))
                 to_delete.append("rbd -p %s rm %s" % (cfg.pool, image))
